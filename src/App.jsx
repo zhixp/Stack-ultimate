@@ -1,167 +1,338 @@
-/* global BigInt */
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { createPublicClient, createWalletClient, custom, http, parseEther, formatEther } from 'viem';
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from './abi';
-import Game from './Game';
-import './index.css';
+import { STACK_ULTIMATE_ABI } from '../shared/stackUltimateAbi.js';
+import { CONTRACT_ADDRESS, PRIVY_APP_ID } from './config.js';
+import { StackScene } from './game/StackScene.js';
+import { useGameState } from './hooks/useGameState.js';
+import { useSession } from './hooks/useSession.js';
+import { api, ApiError } from './lib/api.js';
+import { friendlyError, publicClient, walletClientFor } from './lib/chain.js';
+import { TopBar } from './components/TopBar.jsx';
+import { Lobby } from './components/Lobby.jsx';
+import { GameOver } from './components/GameOver.jsx';
+import { Leaderboard } from './components/Leaderboard.jsx';
+import { Toasts } from './components/Toasts.jsx';
+import { useToasts } from './hooks/useToasts.js';
 
-const abstractChain = {
-  id: 11124,
-  name: 'Abstract Testnet',
-  network: 'abstract-testnet',
-  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: ['https://api.testnet.abs.xyz'] } },
-};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isNarrow = () => window.matchMedia('(max-width: 860px)').matches;
 
-function App() {
-  const { login, authenticated, user, logout } = usePrivy();
-  const { wallets } = useWallets();
-  
-  // State
-  const [potSize, setPotSize] = useState("0");
-  const [highScore, setHighScore] = useState("0");
-  const [tickets, setTickets] = useState(0);
-  const [xp, setXp] = useState(0);
-  const [king, setKing] = useState("0x...");
-  const [buyAmount, setBuyAmount] = useState(5);
-  
-  // Game State
-  const [isGameActive, setIsGameActive] = useState(false);
-  const [isWriting, setIsWriting] = useState(false);
+/** Without a Privy app id the page still works for practice runs. */
+const usePrivySafe = PRIVY_APP_ID
+  ? usePrivy
+  : () => ({ ready: true, authenticated: false, user: null, login: () => {}, logout: () => {} });
+const useWalletsSafe = PRIVY_APP_ID ? useWallets : () => ({ wallets: [] });
 
-  // --- FETCH DATA ---
-  const fetchGameState = async () => {
-    try {
-      const publicClient = createPublicClient({ chain: abstractChain, transport: http() });
-      const playerAddress = user?.wallet?.address || "0x0000000000000000000000000000000000000000";
-      
-      const data = await publicClient.readContract({
-        address: CONTRACT_ADDRESS, abi: CONTRACT_ABI, functionName: 'get_game_state',
-        args: [playerAddress]
-      });
-      
-      setPotSize(formatEther(data[0]));
-      setHighScore(data[1].toString());
-      setKing(data[2]);
-      setTickets(Number(data[4]));
-      setXp(Number(data[5]));
-    } catch (error) { console.error("Read Error:", error); }
-  };
+export default function App() {
+  const { ready, authenticated, user, login, logout } = usePrivySafe();
+  const { wallets } = useWalletsSafe();
+  const wallet = useMemo(() => {
+    if (!authenticated) return null;
+    const primary = user?.wallet?.address?.toLowerCase();
+    return wallets.find((w) => w.address.toLowerCase() === primary) || wallets[0] || null;
+  }, [authenticated, user, wallets]);
+  const address = wallet?.address;
+
+  const { state, error: stateError, refresh } = useGameState(address);
+  const session = useSession(wallet);
+  const { toasts, push, dismiss } = useToasts();
+
+  const [phase, setPhase] = useState('lobby'); // lobby | playing | over
+  const [busy, setBusy] = useState(null); // null | 'start' | 'buy' | 'claim'
+  const [mode, setMode] = useState('ranked');
+  const [live, setLive] = useState({ score: 0, combo: 0, flash: 0 });
+  const [result, setResult] = useState(null);
+  const [showBoard, setShowBoard] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [narrow, setNarrow] = useState(isNarrow);
+
+  const stageRef = useRef(null);
+  const sceneRef = useRef(null);
+  const runRef = useRef(null); // { sessionId, clicks }
+  const handlers = useRef({});
+
+  // ------------------------------------------------------------ 3D scene
+  useEffect(() => {
+    const scene = new StackScene(stageRef.current, {
+      onDrop: (e) => handlers.current.onDrop?.(e),
+      onEnd: (e) => handlers.current.onEnd?.(e),
+      onTheme: ({ h, s }) => {
+        const root = document.documentElement.style;
+        root.setProperty('--th', String(h));
+        root.setProperty('--ts', `${s}%`);
+      },
+    });
+    sceneRef.current = scene;
+    return () => {
+      scene.dispose();
+      sceneRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
-    fetchGameState();
-    const interval = setInterval(fetchGameState, 5000);
-    return () => clearInterval(interval);
-  }, [user]);
+    const mq = window.matchMedia('(max-width: 860px)');
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
 
-  const getSigner = async () => {
-    const wallet = wallets[0];
-    if (!wallet) throw new Error("No wallet");
-    await wallet.switchChain(11124);
-    const provider = await wallet.getEthereumProvider();
-    return createWalletClient({ account: wallet.address, chain: abstractChain, transport: custom(provider) });
-  };
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (phase === 'playing') scene.setShift(0, 0);
+    else if (narrow) scene.setShift(0, -0.24);
+    else scene.setShift(0.16, 0);
+  }, [phase, narrow]);
 
-  const handleBuyTickets = async () => {
-    try {
-      setIsWriting(true);
-      const client = await getSigner();
-      const [address] = await client.getAddresses();
-      const cost = (buyAmount * 0.0001).toFixed(4).toString();
-      
-      await client.writeContract({
-        address: CONTRACT_ADDRESS, abi: CONTRACT_ABI, functionName: 'buy_tickets',
-        account: address, args: [BigInt(buyAmount)], value: parseEther(cost), gas: BigInt(500000)
+  // ------------------------------------------------------------- runs
+  const submitRun = useCallback(
+    async (run) => {
+      setResult({ status: 'verifying', score: run.score, perfects: run.perfects });
+      let lastErr;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const res = await session.withSession((token) =>
+            api('/game/finish', { token, body: { sessionId: run.sessionId, clicks: run.clicks } }),
+          );
+          setResult({
+            status: res.score === 0 ? 'zero' : res.counted ? 'recorded' : 'recordedOld',
+            score: res.score,
+            perfects: res.perfects,
+            tx: res.tx,
+          });
+          refresh();
+          return;
+        } catch (err) {
+          lastErr = err;
+          const retryable = err instanceof ApiError && (err.status === 0 || err.code === 'retry' || err.status >= 500);
+          if (!retryable) break;
+          await sleep(1200 * (attempt + 1));
+        }
+      }
+      const retryable = lastErr instanceof ApiError && lastErr.code === 'retry';
+      setResult({
+        status: lastErr instanceof ApiError && lastErr.code === 'rejected' ? 'rejected' : 'error',
+        score: run.score,
+        perfects: run.perfects,
+        message: lastErr?.message || 'Could not save this run.',
+        retryable,
       });
-      
-      alert(`Success! Purchased ${buyAmount} Tickets.`);
-      setIsWriting(false);
-      fetchGameState();
-    } catch (error) {
-      console.error(error);
-      setIsWriting(false);
-      alert("Purchase Failed");
+      refresh();
+    },
+    [session, refresh],
+  );
+
+  handlers.current.onDrop = (e) => setLive((l) => ({ score: e.score, combo: e.combo, flash: e.type === 'perfect' ? l.flash + 1 : l.flash }));
+  handlers.current.onEnd = (e) => {
+    setPhase('over');
+    setConfirmExit(false);
+    if (mode === 'practice' || !runRef.current) {
+      setResult({ status: 'practice', score: e.score, perfects: e.perfects });
+      return;
     }
+    const run = { ...runRef.current, clicks: e.clicks, score: e.score, perfects: e.perfects };
+    runRef.current = run;
+    submitRun(run);
   };
 
-  const handleStartGame = () => {
-    if (tickets > 0) {
-        setIsGameActive(true);
-    } else {
-        alert("No Tickets! Buy some to enter.");
-    }
+  const beginRun = useCallback(
+    async (practice) => {
+      if (busy) return;
+      setResult(null);
+      setLive({ score: 0, combo: 0, flash: 0 });
+      if (practice) {
+        runRef.current = null;
+        setMode('practice');
+        setPhase('playing');
+        sceneRef.current?.start();
+        return;
+      }
+      if (!authenticated) return login();
+      setBusy('start');
+      try {
+        const res = await session.withSession((token) => api('/game/start', { token, body: {} }));
+        runRef.current = { sessionId: res.sessionId };
+        setMode('ranked');
+        setPhase('playing');
+        sceneRef.current?.start();
+        refresh();
+      } catch (err) {
+        setPhase('lobby');
+        push(err instanceof ApiError ? err.message : friendlyError(err), { tone: 'error' });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, authenticated, login, session, refresh, push],
+  );
+
+  const leaveRun = useCallback(() => {
+    sceneRef.current?.stop();
+    runRef.current = null;
+    setConfirmExit(false);
+    setResult(null);
+    setPhase('lobby');
+    refresh();
+  }, [refresh]);
+
+  // --------------------------------------------------------- wallet txs
+  const sendTx = useCallback(
+    async (kind, functionName, args, value, successText) => {
+      if (busy) return;
+      setBusy(kind);
+      const toastId = push('Confirm in your wallet', { ttl: 0 });
+      try {
+        const client = await walletClientFor(wallet);
+        const hash = await client.writeContract({
+          address: CONTRACT_ADDRESS,
+          abi: STACK_ULTIMATE_ABI,
+          functionName,
+          args,
+          value,
+          account: wallet.address,
+        });
+        push('Waiting for Base to confirm', { id: toastId, ttl: 0 });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+        if (receipt.status !== 'success') throw new Error('Transaction reverted.');
+        push(successText, { id: toastId, tone: 'success' });
+        refresh();
+      } catch (err) {
+        push(friendlyError(err), { id: toastId, tone: 'error' });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, wallet, push, refresh],
+  );
+
+  const buy = useCallback(
+    (count) => {
+      if (!state) return;
+      const value = state.ticketPrice * BigInt(count);
+      sendTx('buy', 'buyTickets', [BigInt(count)], value, `${count} ticket${count === 1 ? '' : 's'} added. Good luck!`);
+    },
+    [state, sendTx],
+  );
+  const claim = useCallback(() => sendTx('claim', 'claim', [], undefined, 'Prize sent to your wallet.'), [sendTx]);
+
+  // -------------------------------------------------------------- input
+  useEffect(() => {
+    const onKey = (e) => {
+      if (phase !== 'playing' || confirmExit) return;
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        if (!e.repeat) sceneRef.current?.drop();
+      } else if (e.code === 'Escape') {
+        if (mode === 'practice') leaveRun();
+        else setConfirmExit(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase, mode, confirmExit, leaveRun]);
+
+  const onStagePointer = (e) => {
+    if (phase !== 'playing' || confirmExit) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    sceneRef.current?.drop();
   };
 
-  const handleGameOver = async (score) => {
-    setIsGameActive(false);
-    if (score === 0) return;
-    
-    setTickets(prev => Math.max(0, prev - 1));
-    alert(`Game Over! Score: ${score}. Ticket Used.`);
-    
-    // Silent Submit
-    try {
-      const client = await getSigner();
-      const [address] = await client.getAddresses();
-      await client.writeContract({
-        address: CONTRACT_ADDRESS, abi: CONTRACT_ABI, functionName: 'play_round',
-        account: address, args: [BigInt(score)]
-      });
-      fetchGameState();
-    } catch (e) { console.error("Silent submit error", e); }
-  };
+  const tickets = state ? Number(state.tickets) : 0;
 
   return (
-    <div className="app-container">
-      <div className="top-bar">
-        <div className="logo">STACK <span className="highlight">PRO</span></div>
-        <div className="ticker">🎟 {tickets} | ⭐ {xp} XP | 💰 {potSize} ETH</div>
-        {authenticated ? 
-            <button onClick={logout} className="connect-btn">LOGOUT</button> : 
-            <button onClick={login} className="connect-btn">LOGIN</button>
-        }
-      </div>
+    <div className={`app phase-${phase}`}>
+      <div ref={stageRef} className="stage" onPointerDown={onStagePointer} />
 
-      <div className="arena">
-        {/* GAME COMPONENT */}
-        {isGameActive && <Game gameActive={isGameActive} onGameOver={handleGameOver} />}
+      {phase !== 'playing' && (
+        <TopBar
+          ready={ready}
+          authenticated={authenticated}
+          address={address}
+          onLogin={login}
+          onLogout={logout}
+          onLeaderboard={() => setShowBoard(true)}
+        />
+      )}
 
-        {!authenticated ? (
-          <div className="welcome-card" style={{zIndex: 10}}>
-            <h1>PROOF OF SKILL</h1>
-            <button onClick={login} className="play-btn">LOGIN TO PLAY</button>
+      {phase === 'playing' && (
+        <div className="hud">
+          <div className="hud-score" key={live.score}>
+            {live.score}
           </div>
-        ) : (
-          !isGameActive && (
-            <div className="lobby-card" style={{zIndex: 10}}>
-                <div className="stats-row">
-                  <div className="stat-box"><div className="label">POT</div><div className="value glow-green">{potSize} ETH</div></div>
-                  <div className="stat-box"><div className="label">HIGH SCORE</div><div className="value">{highScore}</div></div>
-                </div>
-                <div className="xp-bar"><div className="xp-fill" style={{width: `${(xp % 1000)/10}%`}}></div></div>
-
-                {tickets > 0 ? (
-                    <button className="play-btn" onClick={handleStartGame}>PLAY NOW ({tickets})</button>
-                ) : (
-                    <div className="ticket-shop">
-                        <div className="ticket-controls">
-                            <button className="control-btn" onClick={() => setBuyAmount(Math.max(1, buyAmount - 1))}>-</button>
-                            <div className="ticket-input">{buyAmount}</div>
-                            <button className="control-btn" onClick={() => setBuyAmount(Math.min(50, buyAmount + 1))}>+</button>
-                        </div>
-                        <button className="buy-btn" onClick={handleBuyTickets} disabled={isWriting}>
-                            {isWriting ? "..." : `BUY FOR ${(buyAmount * 0.0001).toFixed(4)} ETH`}
-                        </button>
-                    </div>
-                )}
-                <div className="king-display">King: {king.substring(0,8)}...</div>
+          {live.combo > 1 && (
+            <div className="hud-combo" key={`c${live.flash}`}>
+              Perfect ×{live.combo}
             </div>
-          )
-        )}
-      </div>
+          )}
+          {live.combo === 1 && (
+            <div className="hud-combo" key={`c${live.flash}`}>
+              Perfect
+            </div>
+          )}
+          {live.score === 0 && <div className="hud-hint">Tap or press Space to drop</div>}
+          <button
+            type="button"
+            className="btn btn-glass hud-exit"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => (mode === 'practice' ? leaveRun() : setConfirmExit(true))}
+          >
+            {mode === 'practice' ? 'Exit' : 'Leave'}
+          </button>
+          {mode === 'practice' && <div className="hud-tag">Practice</div>}
+        </div>
+      )}
+
+      {confirmExit && (
+        <div className="sheet-backdrop">
+          <div className="sheet sheet-small" role="alertdialog" aria-modal="true" aria-label="Leave this run?">
+            <h2>Leave this run?</h2>
+            <p className="muted">The ticket is already spent. Leaving ends this run without a score.</p>
+            <div className="row">
+              <button type="button" className="btn btn-accent btn-lg" onClick={() => setConfirmExit(false)}>
+                Keep playing
+              </button>
+              <button type="button" className="btn btn-soft btn-lg" onClick={leaveRun}>
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {phase === 'lobby' && (
+        <Lobby
+          state={state}
+          stateError={stateError}
+          authenticated={authenticated}
+          address={address}
+          busy={busy}
+          hasSession={session.hasSession()}
+          onLogin={login}
+          onPlay={() => beginRun(false)}
+          onPractice={() => beginRun(true)}
+          onBuy={buy}
+          onClaim={claim}
+        />
+      )}
+
+      {phase === 'over' && result && (
+        <GameOver
+          result={result}
+          highScore={state?.highScore}
+          tickets={tickets}
+          onAgain={beginRun}
+          onLobby={() => {
+            setResult(null);
+            setPhase('lobby');
+            sceneRef.current?.stop();
+          }}
+          onRetry={() => runRef.current && submitRun(runRef.current)}
+        />
+      )}
+
+      <Leaderboard open={showBoard} onClose={() => setShowBoard(false)} me={address} />
+      <Toasts toasts={toasts} dismiss={dismiss} />
     </div>
   );
 }
-
-export default App;
