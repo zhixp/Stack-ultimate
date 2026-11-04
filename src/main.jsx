@@ -1,45 +1,28 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { PrivyProvider } from '@privy-io/react-auth';
+import { CHAIN, PRIVY_APP_ID } from './config.js';
+import App from './App.jsx';
+import '@fontsource-variable/outfit';
 import './index.css';
-import App from './App';
 
-// Backup polyfill
-window.global = window;
+const root = createRoot(document.getElementById('root'));
 
-const abstractTestnet = {
-  id: 11124,
-  name: 'Abstract Testnet',
-  network: 'abstract-testnet',
-  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { 
-    default: { http: ['https://api.testnet.abs.xyz'] },
-    public: { http: ['https://api.testnet.abs.xyz'] },
-  },
-  blockExplorers: { 
-    default: { name: 'AbstractScan', url: 'https://sepolia.abscan.org' } 
-  },
-  testnet: true,
-};
-
-ReactDOM.createRoot(document.getElementById('root')).render(
-  // REMOVED STRICT MODE TO FIX PHYSICS CRASH
+const app = PRIVY_APP_ID ? (
   <PrivyProvider
-    appId="cmi8b6gb801eyl70cxuuxdjuu"
+    appId={PRIVY_APP_ID}
     config={{
-      loginMethods: ['email', 'wallet'],
-      appearance: {
-        theme: 'dark',
-        accentColor: '#00ff00',
-        logo: 'https://abstract.xyz/favicon.ico',
-      },
-      embeddedWallets: {
-        createOnLogin: 'users-without-wallets',
-      },
-      supportedChains: [abstractTestnet],
-      defaultChain: abstractTestnet,
+      loginMethods: ['wallet', 'email'],
+      appearance: { theme: 'light', accentColor: '#0052FF', walletChainType: 'ethereum-only' },
+      embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' } },
+      defaultChain: CHAIN,
+      supportedChains: [CHAIN],
     }}
   >
     <App />
   </PrivyProvider>
+) : (
+  <App />
 );
+
+root.render(<StrictMode>{app}</StrictMode>);
