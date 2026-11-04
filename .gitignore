@@ -33,3 +33,12 @@ data/
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+
+# token-saver session files
+.claude/token-saver/HANDOFF.md
+.claude/token-saver/USAGE.md
+.claude/settings.local.json
+.claude/token-saver/.state-*
+
+# vercel link (also writes .env.local with an OIDC token, covered by .env.* above)
+.vercel

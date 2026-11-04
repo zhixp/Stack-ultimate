@@ -2,13 +2,13 @@
   Stack Ultimate UI
   Shape rule: anything you press is a full pill. Surfaces are 20px. Inline notices are 12px.
   Colour rule: one accent (Base blue). Green/red only for real outcomes (saved, failed, prize).
-  The page tint follows the tower: the scene sets --th (hue) and --ts (saturation).
+  The 3D world owns the theme: it sets --sky-ink (type drawn straight over the sky) and
+  data-sky="day|night" on <html>, which flips the surfaces. The OS dark mode is not used.
   Layers: canvas 0, hud/panels 10, top bar 20, sheets 40, toasts 60.
 */
 
 :root {
-  --th: 214;
-  --ts: 62%;
+  --sky-ink: #eef1ff;
 
   --accent: #0052ff;
   --accent-hover: #0046d9;
@@ -20,49 +20,45 @@
   --warn: #8a5300;
   --warn-bg: #fdf1d8;
 
-  --bg-top: hsl(var(--th) calc(var(--ts) * 0.75) 92%);
-  --bg-bottom: hsl(calc(var(--th) + 22) calc(var(--ts) * 0.6) 77%);
-  --hud-ink: hsl(var(--th) 40% 20% / 0.85);
-
-  --surface: #fbfcfe;
-  --surface-2: #f0f2f7;
+  --surface: rgb(251 252 254 / 0.86);
+  --surface-solid: #fbfcfe;
+  --surface-2: rgb(17 23 41 / 0.06);
   --ink: #111729;
   --ink-2: #3d465c;
   --muted: #5f6880;
   --line: rgba(17, 23, 41, 0.1);
-  --shadow: 0 30px 60px -24px hsl(var(--th) 45% 25% / 0.38), 0 6px 16px -8px hsl(var(--th) 40% 25% / 0.18);
+  --shadow: 0 30px 60px -24px rgb(10 16 40 / 0.4), 0 6px 16px -8px rgb(10 16 40 / 0.2);
+  --glass-edge: rgb(255 255 255 / 0.55);
 
   --r-surface: 20px;
   --r-inline: 12px;
   --font: 'Outfit Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-top: hsl(var(--th) calc(var(--ts) * 0.4) 15%);
-    --bg-bottom: hsl(calc(var(--th) + 22) calc(var(--ts) * 0.45) 25%);
-    --hud-ink: hsl(var(--th) 60% 94% / 0.9);
-    --surface: #161c2c;
-    --surface-2: #20283c;
-    --ink: #eef1f8;
-    --ink-2: #c3c9d8;
-    --muted: #949cb2;
-    --line: rgba(238, 241, 248, 0.1);
-    --shadow: 0 30px 60px -24px rgba(3, 6, 15, 0.7), 0 6px 16px -8px rgba(3, 6, 15, 0.5);
-    --accent: #3d7bff;
-    --accent-hover: #5a8eff;
-    --ok: #4fd18b;
-    --ok-bg: rgba(79, 209, 139, 0.12);
-    --bad: #ff7b80;
-    --bad-bg: rgba(255, 123, 128, 0.12);
-    --warn: #f5c46b;
-    --warn-bg: rgba(245, 196, 107, 0.12);
-    color-scheme: dark;
-  }
+:root[data-sky='night'] {
+  --surface: rgb(16 21 38 / 0.82);
+  --surface-solid: #141a2c;
+  --surface-2: rgb(238 241 248 / 0.08);
+  --ink: #eef1f8;
+  --ink-2: #c3c9d8;
+  --muted: #9aa2b8;
+  --line: rgba(238, 241, 248, 0.1);
+  --shadow: 0 30px 60px -24px rgb(2 4 12 / 0.75), 0 6px 16px -8px rgb(2 4 12 / 0.5);
+  --glass-edge: rgb(255 255 255 / 0.1);
+  --accent: #3d7bff;
+  --accent-hover: #5a8eff;
+  --ok: #4fd18b;
+  --ok-bg: rgba(79, 209, 139, 0.14);
+  --bad: #ff7b80;
+  --bad-bg: rgba(255, 123, 128, 0.14);
+  --warn: #f5c46b;
+  --warn-bg: rgba(245, 196, 107, 0.14);
+  color-scheme: dark;
 }
 
 *,
@@ -82,7 +78,7 @@ body,
 body {
   font-family: var(--font);
   color: var(--ink);
-  background: var(--bg-bottom);
+  background: #05070f;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
@@ -116,8 +112,7 @@ p {
 .app {
   position: fixed;
   inset: 0;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
-  transition: background 1s ease;
+  background: #05070f;
 }
 
 .stage {
@@ -136,6 +131,13 @@ p {
   display: block;
   width: 100%;
   height: 100%;
+  animation: world-in 1.8s var(--ease-soft) both;
+}
+
+@keyframes world-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* ---------------------------------------------------------------- top bar */
@@ -151,7 +153,9 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  color: var(--sky-ink);
   pointer-events: none;
+  transition: color 1.2s ease;
 }
 
 .topbar > * {
@@ -205,7 +209,7 @@ p {
 .chain {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ink-2);
+  opacity: 0.72;
   padding: 0 6px;
 }
 
@@ -216,8 +220,11 @@ p {
   height: 40px;
   padding: 0 4px 0 14px;
   border-radius: 999px;
+  color: var(--ink);
   background: var(--surface);
-  box-shadow: 0 1px 2px hsl(var(--th) 40% 20% / 0.08);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 1px 2px rgb(10 16 40 / 0.1);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -273,7 +280,7 @@ p {
 
 .btn-ink {
   background: var(--ink);
-  color: var(--surface);
+  color: var(--surface-solid);
 }
 
 .btn-ink:hover:not(:disabled) {
@@ -288,27 +295,46 @@ p {
 .btn-soft {
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 1px 2px hsl(var(--th) 40% 20% / 0.08);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 1px 2px rgb(10 16 40 / 0.1);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
 }
 
 .panel .btn-soft,
 .sheet .btn-soft {
   background: var(--surface-2);
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .btn-soft:hover:not(:disabled) {
   background: var(--surface-2);
 }
 
-/* Glass is used once: the Leave button floating over the live game. */
+/* Glass: controls drawn straight over the world, inked by the hour. */
 .btn-glass {
-  color: var(--hud-ink);
-  background: hsl(0 0% 100% / 0.28);
-  border: 1px solid hsl(0 0% 100% / 0.45);
-  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  color: var(--sky-ink);
+  background: color-mix(in srgb, var(--sky-ink) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sky-ink) 16%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  transition: transform 0.15s var(--ease), background-color 0.15s ease, color 1.2s ease;
+}
+
+.btn-glass:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sky-ink) 15%, transparent);
+}
+
+.btn-hero {
+  height: 50px;
+  padding: 0 24px 0 20px;
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.btn-accent.btn-hero {
+  box-shadow: 0 12px 30px -12px rgb(0 82 255 / 0.65);
 }
 
 .btn-text {
@@ -347,7 +373,7 @@ p {
 .panel {
   position: absolute;
   z-index: 10;
-  left: max(32px, calc(50% - 620px));
+  right: max(32px, calc(50% - 620px));
   top: 50%;
   width: 380px;
   max-height: calc(100% - 128px);
@@ -358,10 +384,14 @@ p {
   gap: 20px;
   padding: 26px;
   border-radius: var(--r-surface);
+  color: var(--ink);
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), var(--shadow);
+  backdrop-filter: blur(24px) saturate(1.35);
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
   transform: translateY(-50%);
-  animation: panel-in 0.45s var(--ease) both;
+  animation: panel-in 0.7s 0.15s var(--ease) both;
+  transition: background-color 1.2s ease, color 1.2s ease;
 }
 
 .panel::-webkit-scrollbar {
@@ -373,12 +403,6 @@ p {
     opacity: 0;
     transform: translateY(calc(-50% + 12px));
   }
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 28px;
-  letter-spacing: -0.03em;
 }
 
 .eyebrow {
@@ -542,7 +566,7 @@ p {
 
 .chip-on {
   background: var(--ink);
-  color: var(--surface);
+  color: var(--surface-solid);
 }
 
 .stepper {
@@ -594,26 +618,129 @@ p {
   }
 }
 
-/* -------------------------------------------------------------- game over */
+/* ------------------------------------------------------------- hero type */
 
-.panel-over {
-  align-items: center;
-  text-align: center;
-  gap: 16px;
-  animation-delay: 0.5s;
+/* Type set straight on the sky: the title in the lobby and the result after a run. */
+.hero {
+  position: absolute;
+  z-index: 10;
+  left: max(32px, calc(50% - 620px));
+  bottom: max(clamp(28px, 9vh, 96px), calc(20px + var(--safe-bottom)));
+  max-width: min(560px, calc(100% - 64px));
+  color: var(--sky-ink);
+  pointer-events: none;
+  transition: color 1.2s ease;
 }
 
-.final-score {
-  font-size: 112px;
-  font-weight: 750;
-  line-height: 0.92;
-  letter-spacing: -0.06em;
+.hero > *,
+.hero .row {
+  pointer-events: auto;
+}
+
+.rise {
+  animation: rise 1s var(--ease-soft) both;
+}
+
+.rise:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.rise:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.hero-over .rise {
+  animation-duration: 0.9s;
+}
+
+.hero-over .rise:nth-child(1) {
+  animation-delay: 0.7s;
+}
+
+.hero-over .rise:nth-child(2) {
+  animation-delay: 0.82s;
+}
+
+.hero-over .rise:nth-child(3) {
+  animation-delay: 0.94s;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.kicker {
+  margin-bottom: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.66;
+}
+
+.hero-title {
+  margin: 0;
+  font-weight: 250;
+  font-size: clamp(52px, 8.6vw, 116px);
+  line-height: 0.88;
+  letter-spacing: -0.05em;
+}
+
+.tnum {
   font-variant-numeric: tabular-nums;
 }
 
-.final-meta {
-  margin-top: -6px;
-  color: var(--ink-2);
+.hero-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.hero-note {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.over-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.over-body .row {
+  width: auto;
+  flex-wrap: wrap;
+}
+
+.stats {
+  display: flex;
+  gap: 28px;
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats div {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.stats dt {
+  opacity: 0.62;
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
 }
 
 .lead-banner {
@@ -626,16 +753,19 @@ p {
   color: var(--warn);
   font-weight: 650;
   font-size: 14px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .status {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
   min-height: 40px;
   padding: 8px 14px;
   border-radius: var(--r-inline);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.35;
@@ -648,7 +778,7 @@ p {
 }
 
 .status-pending {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: var(--surface);
   color: var(--accent);
 }
 
@@ -663,8 +793,8 @@ p {
 }
 
 .status-muted {
-  background: var(--surface-2);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--sky-ink) 9%, transparent);
+  color: var(--sky-ink);
 }
 
 .stack-loader {
@@ -717,54 +847,85 @@ p {
   inset: 0;
   z-index: 10;
   pointer-events: none;
-  color: var(--hud-ink);
+  color: var(--sky-ink);
+  transition: color 1.2s ease;
 }
 
-.hud-score {
+.hud-floor {
   position: absolute;
-  top: calc(8vh + var(--safe-top));
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: clamp(88px, 16vh, 156px);
-  font-weight: 750;
-  letter-spacing: -0.05em;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  animation: score-pop 0.24s var(--ease);
+  top: max(20px, calc(14px + var(--safe-top)));
+  left: clamp(20px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: rise 0.6s var(--ease-soft) both;
 }
 
-@keyframes score-pop {
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.66;
+}
+
+.label-dim {
+  opacity: 0.7;
+}
+
+.num {
+  font-size: clamp(56px, 7vw, 80px);
+  font-weight: 250;
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  animation: num-tick 0.35s var(--ease);
+}
+
+@keyframes num-tick {
   from {
-    transform: scale(1.1);
+    opacity: 0.4;
+    transform: translateY(6px);
   }
 }
 
 .hud-combo {
-  position: absolute;
-  top: calc(8vh + clamp(88px, 16vh, 156px) + 10px + var(--safe-top));
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 700;
-  animation: combo 0.9s var(--ease) both;
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  animation: combo 1.2s var(--ease) both;
 }
 
 @keyframes combo {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   15%,
   70% {
-    opacity: 1;
+    opacity: 0.9;
     transform: none;
   }
   100% {
     opacity: 0;
-    transform: translateY(-4px);
   }
+}
+
+.hud-right {
+  position: absolute;
+  top: max(20px, calc(14px + var(--safe-top)));
+  right: clamp(20px, 4vw, 40px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-right .btn {
+  height: 34px;
+  padding: 0 16px;
+  pointer-events: auto;
 }
 
 .hud-hint {
@@ -773,26 +934,52 @@ p {
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 600;
-  opacity: 0.75;
-  animation: fade 0.6s 0.4s ease both;
-}
-
-.hud-exit {
-  position: absolute;
-  top: calc(18px + var(--safe-top));
-  right: 24px;
-  pointer-events: auto;
-}
-
-.hud-tag {
-  position: absolute;
-  top: calc(28px + var(--safe-top));
-  left: 24px;
-  font-size: 13px;
-  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   opacity: 0.7;
+  animation: fade 0.8s 0.6s ease both;
+}
+
+/* time + weather */
+.sky-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  color: var(--sky-ink);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--sky-ink) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sky-ink) 13%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  transition: color 1.2s ease;
+}
+
+.sky-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.sky-chip .sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.sky-corner {
+  position: absolute;
+  z-index: 10;
+  right: clamp(20px, 4vw, 40px);
+  bottom: max(20px, calc(14px + var(--safe-bottom)));
+  pointer-events: none;
+  animation: fade 1.2s 1s ease both;
 }
 
 /* ----------------------------------------------------------------- sheets */
@@ -804,7 +991,9 @@ p {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: hsl(var(--th) 40% 10% / 0.35);
+  background: rgb(5 8 20 / 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   animation: fade 0.2s ease both;
 }
 
@@ -823,8 +1012,9 @@ p {
   gap: 16px;
   padding: 24px;
   border-radius: var(--r-surface);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  color: var(--ink);
+  background: var(--surface-solid);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), var(--shadow);
   animation: sheet-in 0.3s var(--ease) both;
 }
 
@@ -872,9 +1062,9 @@ p {
 }
 
 .tabs button.on {
-  background: var(--surface);
+  background: var(--surface-solid);
   color: var(--ink);
-  box-shadow: 0 1px 3px hsl(var(--th) 40% 20% / 0.12);
+  box-shadow: 0 1px 3px rgb(10 16 40 / 0.14);
 }
 
 .board {
@@ -961,7 +1151,7 @@ p {
   border: 0;
   border-radius: 999px;
   background: var(--ink);
-  color: var(--surface);
+  color: var(--surface-solid);
   font-size: 14px;
   font-weight: 500;
   text-align: center;
@@ -1019,16 +1209,42 @@ p {
     font-size: 26px;
   }
 
-  .final-score {
-    font-size: 92px;
+  /* with the lobby card up, the brand in the top bar is the title */
+  .hero:not(.hero-solo, .hero-over) {
+    display: none;
   }
 
-  .hud-exit {
-    right: 16px;
+  .sky-corner-card {
+    top: calc(70px + var(--safe-top));
+    bottom: auto;
+  }
+}
+
+/* portrait: the sky is the quiet part of the frame, so the type lives there */
+@media (orientation: portrait) and (max-width: 860px) {
+  .hero {
+    left: 20px;
+    right: 20px;
+    top: calc(84px + var(--safe-top));
+    bottom: auto;
+    max-width: none;
   }
 
-  .hud-tag {
-    left: 16px;
+  .hero-title {
+    font-size: clamp(48px, 15vw, 80px);
+  }
+
+  .hero-over .hero-title {
+    font-size: clamp(44px, 13vw, 72px);
+  }
+
+  .hero-cta {
+    margin-top: 22px;
+  }
+
+  .over-body {
+    gap: 14px;
+    margin-top: 16px;
   }
 }
 
@@ -1045,11 +1261,33 @@ p {
   .brand {
     font-size: 17px;
   }
+
+  .hud-floor {
+    left: 16px;
+  }
+
+  .hud-right {
+    right: 16px;
+    gap: 6px;
+  }
+
+  .hud-right .btn {
+    padding: 0 13px;
+  }
+
+  .sky-chip {
+    padding: 0 11px 0 9px;
+    gap: 6px;
+    font-size: 12px;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .btn-glass {
-    background: var(--surface);
+  .btn-glass,
+  .panel,
+  .btn-soft,
+  .account {
+    background: var(--surface-solid);
     color: var(--ink);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

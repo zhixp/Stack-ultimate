@@ -8,10 +8,10 @@
 // Keep this file free of DOM / Node APIs and of any randomness.
 
 export const RULES = Object.freeze({
-  VERSION: 1,
+  VERSION: 2,
   BLOCK_HEIGHT: 1,
   BASE_SIZE: 10,
-  TRAVEL: 13, // how far from the tower centre a new block starts
+  TRAVEL: 17, // how far from the tower centre a new block starts (a longer swing is a faster, harder one)
   BASE_PERIOD_MS: 3000, // one full swing (out and back) on the first level
   MIN_PERIOD_MS: 1100, // fastest swing
   PERIOD_DECAY: 0.975, // each level swings this much faster

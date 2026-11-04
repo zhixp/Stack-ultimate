@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Crown, Minus, Plus } from '@phosphor-icons/react';
+import { ArrowUp, Crown, Minus, Plus } from '@phosphor-icons/react';
 import { CONTRACT_ADDRESS, MAX_TICKETS_PER_TX, TICKET_PRESETS } from '../config.js';
 import { countdown, eth, shortAddress } from '../lib/format.js';
 
@@ -13,6 +13,19 @@ function useNow(intervalMs) {
 }
 
 const Skel = ({ w }) => <span className="skeleton" style={{ width: w }} aria-hidden="true" />;
+
+/** The big type that floats in the sky. `children` sits under the title. */
+const Hero = ({ solo, children }) => (
+  <section className={`hero ${solo ? 'hero-solo' : ''}`} aria-label="Stack Ultimate">
+    <p className="kicker rise">A climbing game on Base</p>
+    <h1 className="hero-title rise">
+      Stack
+      <br />
+      Ultimate
+    </h1>
+    {children}
+  </section>
+);
 
 export function Lobby({ state, stateError, authenticated, address, busy, hasSession, onLogin, onPlay, onPractice, onBuy, onClaim }) {
   const now = useNow(1000);
@@ -30,17 +43,21 @@ export function Lobby({ state, stateError, authenticated, address, busy, hasSess
 
   if (!CONTRACT_ADDRESS) {
     return (
-      <section className="panel">
-        <h1 className="panel-title">Stack Ultimate</h1>
-        <p className="muted">The game contract is not set up yet, so ranked play is off. Practice works.</p>
-        <button type="button" className="btn btn-accent btn-xl" onClick={onPractice}>
-          Practice
-        </button>
-      </section>
+      <Hero solo>
+        <div className="rise hero-cta">
+          <button type="button" className="btn btn-accent btn-hero" onClick={onPractice}>
+            <ArrowUp size={18} weight="bold" aria-hidden="true" />
+            Start climbing
+          </button>
+          <p className="hero-note">Free practice. Ranked runs for the prize pot open soon.</p>
+        </div>
+      </Hero>
     );
   }
 
   return (
+    <>
+    <Hero />
     <section className="panel" aria-label="Lobby">
       <div className="pot">
         <span className="eyebrow">Prize pot</span>
@@ -150,5 +167,6 @@ export function Lobby({ state, stateError, authenticated, address, busy, hasSess
         Practice run, free and unranked
       </button>
     </section>
+    </>
   );
 }

@@ -92,6 +92,7 @@ before(async () => {
     FINISH_LAG_MS: '1500',
     BOT_MIN_SCORE: '4',
     RATE_LIMIT_PER_MIN: '10000',
+    ALLOWED_ORIGINS: 'https://play.example',
   });
   ctx = createApp(config, { log: quiet });
   await new Promise((r) => {
@@ -118,6 +119,25 @@ test('sign-in rejects a signature from another wallet', async () => {
   const signature = await bob.signMessage({ message: n.message });
   const res = await api('/auth/verify', { body: { address: alice.address, nonce: n.nonce, signature } });
   assert.equal(res.status, 401);
+});
+
+test('sign-in message is EIP-4361 and names only an allowed site', async () => {
+  const { parseSiweMessage } = await import('viem/siwe');
+  const nonceFrom = async (origin) => {
+    const res = await fetch(`${baseUrl}/api/auth/nonce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin },
+      body: JSON.stringify({ address: privateKeyToAccount(KEYS.alice).address }),
+    });
+    return parseSiweMessage((await res.json()).message);
+  };
+  const allowed = await nonceFrom('https://play.example');
+  assert.equal(allowed.domain, 'play.example');
+  assert.equal(allowed.chainId, foundry.id);
+  assert.ok(allowed.expirationTime > allowed.issuedAt);
+  // A phishing page can't get our server to put its own domain in the message.
+  const foreign = await nonceFrom('https://evil.example');
+  assert.notEqual(foreign.domain, 'evil.example');
 });
 
 test('a nonce can only be used once', async () => {
