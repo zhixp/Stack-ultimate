@@ -12,10 +12,23 @@ import { Lobby } from './components/Lobby.jsx';
 import { GameOver } from './components/GameOver.jsx';
 import { Leaderboard } from './components/Leaderboard.jsx';
 import { Toasts } from './components/Toasts.jsx';
+import { SkyChip } from './components/SkyChip.jsx';
+import { setSky } from './lib/sky.js';
 import { useToasts } from './hooks/useToasts.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isNarrow = () => window.matchMedia('(max-width: 860px)').matches;
+const BEST_KEY = 'stack.practice.best';
+
+function practiceBest(score) {
+  try {
+    const best = Math.max(score, Number(localStorage.getItem(BEST_KEY)) || 0);
+    localStorage.setItem(BEST_KEY, String(best));
+    return best;
+  } catch {
+    return score;
+  }
+}
 
 /** Without a Privy app id the page still works for practice runs. */
 const usePrivySafe = PRIVY_APP_ID
@@ -56,11 +69,7 @@ export default function App() {
     const scene = new StackScene(stageRef.current, {
       onDrop: (e) => handlers.current.onDrop?.(e),
       onEnd: (e) => handlers.current.onEnd?.(e),
-      onTheme: ({ h, s }) => {
-        const root = document.documentElement.style;
-        root.setProperty('--th', String(h));
-        root.setProperty('--ts', `${s}%`);
-      },
+      onWorld: setSky,
     });
     sceneRef.current = scene;
     return () => {
@@ -79,9 +88,10 @@ export default function App() {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    if (phase === 'playing') scene.setShift(0, 0);
-    else if (narrow) scene.setShift(0, -0.24);
-    else scene.setShift(0.16, 0);
+    // Only the lobby card covers part of the world; the other screens float their type in the sky.
+    if (phase !== 'lobby' || !CONTRACT_ADDRESS) scene.setShift(0, 0);
+    else if (narrow) scene.setShift(0, -0.2);
+    else scene.setShift(-0.12, 0);
   }, [phase, narrow]);
 
   // ------------------------------------------------------------- runs
@@ -127,7 +137,7 @@ export default function App() {
     setPhase('over');
     setConfirmExit(false);
     if (mode === 'practice' || !runRef.current) {
-      setResult({ status: 'practice', score: e.score, perfects: e.perfects });
+      setResult({ status: 'practice', score: e.score, perfects: e.perfects, best: practiceBest(e.score) });
       return;
     }
     const run = { ...runRef.current, clicks: e.clicks, score: e.score, perfects: e.perfects };
@@ -257,29 +267,36 @@ export default function App() {
 
       {phase === 'playing' && (
         <div className="hud">
-          <div className="hud-score" key={live.score}>
-            {live.score}
+          <div className="hud-floor">
+            <span className="label">
+              Floor{mode === 'practice' && <span className="label-dim"> · practice</span>}
+            </span>
+            <span className="num" key={live.score}>
+              {live.score}
+            </span>
+            {live.combo > 0 && (
+              <span className="hud-combo" key={`c${live.flash}`}>
+                {live.combo > 1 ? `Perfect x${live.combo}` : 'Perfect'}
+              </span>
+            )}
           </div>
-          {live.combo > 1 && (
-            <div className="hud-combo" key={`c${live.flash}`}>
-              Perfect ×{live.combo}
-            </div>
-          )}
-          {live.combo === 1 && (
-            <div className="hud-combo" key={`c${live.flash}`}>
-              Perfect
-            </div>
-          )}
-          {live.score === 0 && <div className="hud-hint">Tap or press Space to drop</div>}
-          <button
-            type="button"
-            className="btn btn-glass hud-exit"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => (mode === 'practice' ? leaveRun() : setConfirmExit(true))}
-          >
-            {mode === 'practice' ? 'Exit' : 'Leave'}
-          </button>
-          {mode === 'practice' && <div className="hud-tag">Practice</div>}
+          <div className="hud-right">
+            <SkyChip />
+            <button
+              type="button"
+              className="btn btn-glass"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => (mode === 'practice' ? leaveRun() : setConfirmExit(true))}
+            >
+              {mode === 'practice' ? 'Exit' : 'Leave'}
+            </button>
+          </div>
+          {live.score === 0 && <div className="hud-hint">Tap, click or press Space to drop</div>}
+        </div>
+      )}
+      {phase !== 'playing' && (
+        <div className={`sky-corner ${phase === 'lobby' && CONTRACT_ADDRESS ? 'sky-corner-card' : ''}`}>
+          <SkyChip />
         </div>
       )}
 
@@ -320,6 +337,7 @@ export default function App() {
         <GameOver
           result={result}
           highScore={state?.highScore}
+          bestScore={state?.bestScore}
           tickets={tickets}
           onAgain={beginRun}
           onLobby={() => {

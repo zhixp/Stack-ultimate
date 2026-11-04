@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { getAddress, isAddress, isHex } from 'viem';
+import { createSiweMessage } from 'viem/siwe';
 import { HttpError } from './errors.js';
 
 const NONCE_TTL_MS = 5 * 60_000;
@@ -7,17 +8,23 @@ const MAX_PENDING_NONCES = 20_000;
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 
-export function signInMessage({ address, nonce, issuedAt, chainId }) {
-  return [
-    'Sign in to Stack Ultimate',
-    '',
-    'This only proves you own this wallet. It is free and cannot move funds.',
-    '',
-    `Wallet: ${address}`,
-    `Chain ID: ${chainId}`,
-    `Nonce: ${nonce}`,
-    `Issued At: ${issuedAt}`,
-  ].join('\n');
+/**
+ * A standard Sign-In with Ethereum (EIP-4361) message. It names the site that
+ * asked for it, so wallets can warn when a phishing page relays it.
+ */
+export function signInMessage({ address, nonce, issuedAt, expiresAt, chainId, origin }) {
+  const url = new URL(origin);
+  return createSiweMessage({
+    domain: url.host,
+    uri: url.origin,
+    address,
+    chainId,
+    nonce,
+    version: '1',
+    statement: 'Sign in to Stack Ultimate. This only proves you own this wallet. It is free and cannot move funds.',
+    issuedAt,
+    expirationTime: expiresAt,
+  });
 }
 
 /**
@@ -56,15 +63,17 @@ export function createAuth({ secret, publicClient, chainId, ttlMs, now = Date.no
   }
 
   return {
-    issueNonce(rawAddress) {
+    /** `origin` is the site the player signs in on (already checked by the caller). */
+    issueNonce(rawAddress, origin) {
       if (typeof rawAddress !== 'string' || !isAddress(rawAddress)) throw new HttpError(400, 'Invalid wallet address');
       if (nonces.size >= MAX_PENDING_NONCES) prune();
       // Still full: evict the oldest so a flood can't lock real players out.
       while (nonces.size >= MAX_PENDING_NONCES) nonces.delete(nonces.keys().next().value);
       const address = getAddress(rawAddress);
       const nonce = randomBytes(16).toString('hex');
-      const message = signInMessage({ address, nonce, issuedAt: new Date(now()).toISOString(), chainId });
-      nonces.set(nonce, { address, message, expires: now() + NONCE_TTL_MS });
+      const expires = now() + NONCE_TTL_MS;
+      const message = signInMessage({ address, nonce, issuedAt: new Date(now()), expiresAt: new Date(expires), chainId, origin });
+      nonces.set(nonce, { address, message, expires });
       return { nonce, message };
     },
 
